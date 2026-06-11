@@ -29,7 +29,7 @@ The pipeline covers:
 | MetaSPAdes | 3.15.5 | Alternative assembler |
 | Kraken2 | ≥2.1.2 | Taxonomic classification |
 | DIAMOND | ≥0.9.36 | Protein alignment |
-| MEGAN CE | 6.24.20 | Taxonomic/functional classification |
+| MEGAN | 6.24.20 | Taxonomic/functional classification |
 | BLAST+ | ≥2.12 | Sequence confirmation |
 | seqtk | ≥1.3 | Sequence extraction |
 

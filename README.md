@@ -1,9 +1,15 @@
 # Metagenomic Analysis Pipeline
 ## Metagenomic Analysis of Bacterial-Wilt Tomato Rhizosphere Microbiomes
 
-**Authors:** Derleen Mogire, Johnstone Neondo, Christabel Muhonja, Consolate Awuor, Daniel Mureithi, Stephen Ogada, Tofick Barasa Wekesa
+**Authors:** Derleen Mogire¹, Johnstone Neondo¹, Christabel Muhonja², Consolate Awuor², Daniel Mureithi², Stephen Ogada¹, Tofick Barasa Wekesa¹
+ 
+**Affiliations:** 
+¹ Institute for Biotechnology Research, Jomo Kenyatta University of Agriculture and Technology (JKUAT), Nairobi, Kenya
+² Machakos University, Machakos, Kenya
 
-**Institution:** Machakos University / JKUAT, Kenya 
+**Corresponding author:** Derleen Mogire (contact via journal correspondence)
+
+**Manuscript:** Mogire et al. (2026). Metagenomic analysis of bacterial-wilt tomato rhizosphere microbiomes (under review)
 
 ---
 

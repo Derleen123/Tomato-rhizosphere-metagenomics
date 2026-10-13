@@ -24,6 +24,8 @@ The pipeline covers:
 4. BLAST confirmation of viral sequences
 5. Ralstonia-specific phage detection
 6. Taxonomic abundance extraction and summary
+7. BLAST-confirmed viral taxonomy summary
+8. Bacterial classification (Kraken2) and species-level identification of *Ralstonia*, confirmed by BLASTn
 
 ---
 
@@ -40,12 +42,22 @@ The pipeline covers:
 | BLAST+ | ≥2.12 | Sequence confirmation |
 | seqtk | ≥1.3 | Sequence extraction |
 
+### Databases
+
+| Database | Used in | Description |
+|----------|---------|-------------|
+| NCBI nr + MEGAN mapping `megan-map-Feb2022.db` | Script 03 | DIAMOND/MEGAN classification |
+| Kraken2 viral (`k2_viral_20240605`) | Scripts 04, 05, 06 | Prebuilt Kraken2 viral index (release 5 June 2024; downloaded October 2025), run with Kraken2 v2.1.3 on all assembled contigs |
+| Kraken2 Standard-8 (`k2_standard_08_GB_20250714`) | Script 08 | Prebuilt Kraken2 index capped at 8 GB, built 14 July 2025 |
+| `bacterial_refseq_nucl` | Script 08 | Local BLAST nucleotide database built with `makeblastdb` from NCBI bacterial RefSeq sequences |
+| `viral_refseq_nucl` | Scripts 04, 05 | Local BLAST nucleotide database built with `makeblastdb` from NCBI viral RefSeq (`viral.1.1.genomic.fna`, downloaded 26 October 2025) |
+
+
 ---
 
 ## Pipeline Structure
 
 ```
-pipeline/
 ├── README.md                          # This file
 ├── 01_quality_control.sh              # FastQC quality assessment
 ├── 02_assembly.sh                     # Metagenomic assembly (MEGAHIT/MetaSPAdes)
@@ -53,7 +65,8 @@ pipeline/
 ├── 04_kraken2_viral_blast.sh          # Kraken2 viral classification + BLAST confirmation
 ├── 05_ralstonia_phage_detection.sh    # Ralstonia-specific phage BLAST
 ├── 06_taxonomy_extraction.sh          # Taxonomic abundance tables
-└── 07_blast_confirmed_taxonomy.sh     # BLAST-confirmed taxonomy summary
+├── 07_blast_confirmed_taxonomy.sh     # BLAST-confirmed viral taxonomy summary
+└── 08_bacterial_kraken2_ralstonia_blast.sh  # Bacterial Kraken2 + Ralstonia species ID + BLASTn confirmation
 ```
 
 ---
@@ -83,7 +96,25 @@ bash 04_kraken2_viral_blast.sh
 bash 05_ralstonia_phage_detection.sh
 bash 06_taxonomy_extraction.sh
 bash 07_blast_confirmed_taxonomy.sh
+bash 08_bacterial_kraken2_ralstonia_blast.sh
 ```
+
+---
+
+### Ralstonia species identification (Script 08)
+
+DIAMOND/MEGAN assigned most *Ralstonia* sequences only to genus level. Script 08 classifies the assembled contigs with Kraken2 to obtain species-level calls, extracts every contig assigned to *Ralstonia*, and confirms each one by BLASTn against bacterial RefSeq. Each contig receives one status:
+
+| Status | Meaning |
+|--------|---------|
+| `confirmed_species` | Best BLAST hit is *Ralstonia* and the same species as the Kraken2 call |
+| `confirmed_genus_only` | Best BLAST hit is *Ralstonia* but a different species, or Kraken2 stopped at genus |
+| `not_confirmed` | Best BLAST hit is a different genus |
+| `no_blast_hit` | No hit at e-value ≤ 1e-5 |
+
+Main outputs: `ralstonia_contig_confirmation.tsv` (per contig), `ralstonia_species_confirmation.tsv` (per Kraken2 species) and `ralstonia_blast_species_counts.tsv` (species according to BLAST). Counts are numbers of **contigs**, not reads.
+
+Note: species within the *R. solanacearum* species complex (*R. solanacearum*, *R. pseudosolanacearum*, *R. syzygii*) are very closely related, so Kraken2 and BLAST can disagree between them. Such contigs are reported as `confirmed_genus_only`.
 
 ---
 
@@ -95,7 +126,6 @@ Raw sequencing reads (paired-end, Illumina NovaSeq 2×150 bp) are deposited at N
 
 ## License
 
-This code is released under the MIT License. See LICENSE file for details.
+This work is released under the Creative Commons Attribution 4.0 International (CC BY 4.0) licence. See the LICENSE file for details.
 
 ---
-

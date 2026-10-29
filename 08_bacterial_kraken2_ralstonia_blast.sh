@@ -1,4 +1,3 @@
-#!/bin/bash
 # =============================================================================
 # Script 08: Bacterial Classification (Kraken2) + Ralstonia Species
 #            Identification and BLASTn Confirmation
@@ -7,12 +6,13 @@
 #   DIAMOND/MEGAN (Script 03) assigned most Ralstonia sequences only to genus
 #   level. This script gets species-level calls by classifying the assembled
 #   contigs with Kraken2 and then confirms every Ralstonia contig by BLASTn
-#   against a local bacterial RefSeq nucleotide database.
+#   against a local nucleotide database (NCBI bacterial RefSeq subset plus all
+#   RefSeq Ralstonia assemblies; see 08a_build_ralstonia_blast_db.sh).
 #
 #   1. Kraken2 classification of all contigs (full species names kept)
 #   2. Abundance tables for each taxonomic rank (bacteria only, full names)
 #   3. Ralstonia taxa from the Kraken2 report (species + strain level)
-#   4. Extraction of Ralstonia-assigned contigs
+#   4. Extraction of Ralstonia-assigned contigs (length >= MIN_LEN)
 #   5. BLASTn of those contigs against bacterial RefSeq
 #   6. Per-contig and per-species confirmation tables
 #
@@ -21,7 +21,10 @@
 #   Splitting on whitespace keeps only the first word (the genus).
 #
 # Tools:  Kraken2, BLAST+, seqtk
-# Input:  combined_contigs.fa  — assembled contigs (from Script 02)
+# Input:  combined_contigs.fa  — MEGAHIT and metaSPAdes contigs (Script 02)
+#         concatenated into one file, with no length/coverage filtering and no
+#         dereplication. This combined set is used for Kraken2 and BLASTn only
+#         (not for abundance estimates); DIAMOND/MEGAN used the MEGAHIT assembly.
 # Output: kraken_bacteria/     — all output files (see end of script)
 # =============================================================================
 
@@ -30,11 +33,12 @@ WORKING_DIR=~/derleen
 CONTIGS_FA=$WORKING_DIR/combined_contigs.fa
 OUT_DIR=$WORKING_DIR/kraken_bacteria
 KRAKEN_DB=~/databases/kraken2_standard                        # Kraken2 Standard-8 (k2_standard_08_GB_20250714)
-BLAST_DB=~/databases/bacterial_refseq/bacterial_refseq_nucl   # local BLAST DB built from NCBI bacterial RefSeq
+BLAST_DB=~/ralstonia_all/blastdb/bpr   # local BLAST DB: NCBI bacterial RefSeq subset + all RefSeq Ralstonia assemblies (built with 08a_build_ralstonia_blast_db.sh)
 THREADS=4
 TARGET_GENUS="Ralstonia"
-MIN_PIDENT=0     # minimum % identity for a "confirmed_species" call (0 = no cut-off)
-MIN_QCOV=0       # minimum % query coverage for a "confirmed_species" call (0 = no cut-off)
+MIN_PIDENT=97    # minimum % identity for a "confirmed_species" call (0 = no cut-off)
+MIN_QCOV=50      # minimum % query coverage for a "confirmed_species" call (0 = no cut-off)
+MIN_LEN=200      # minimum contig length (bp) of a Ralstonia contig to be BLASTed/confirmed
 ###
 
 set -euo pipefail
@@ -108,8 +112,9 @@ cat ralstonia_kraken2_taxa.tsv
 # ---- Step 4: Extract contigs assigned to the target genus ----
 echo "--- Step 4: Extracting ${TARGET_GENUS} contigs ---"
 # Output columns: contig_id | taxid | assigned name | contig length
-awk -F'\t' -v OFS='\t' -v g="$TARGET_GENUS" '
-  $1=="C" && $3 ~ ("^" g "( |$)") {
+# Only contigs of at least MIN_LEN bp are kept.
+awk -F'\t' -v OFS='\t' -v g="$TARGET_GENUS" -v minlen="$MIN_LEN" '
+  $1=="C" && $3 ~ ("^" g "( |$)") && ($4+0 >= minlen) {
     name=$3; taxid=$3
     sub(/ \(taxid [0-9]+\)$/, "", name)
     sub(/^.*\(taxid /, "", taxid); sub(/\)$/, "", taxid)
@@ -117,7 +122,7 @@ awk -F'\t' -v OFS='\t' -v g="$TARGET_GENUS" '
   }
 ' all_contigs_kraken.txt > ralstonia_kraken_contigs.tsv
 N_TARGET=$(wc -l < ralstonia_kraken_contigs.tsv)
-echo "${TARGET_GENUS} contigs assigned by Kraken2: $N_TARGET"
+echo "${TARGET_GENUS} contigs assigned by Kraken2 (>= ${MIN_LEN} bp): $N_TARGET"
 [ "$N_TARGET" -gt 0 ] || { echo "No ${TARGET_GENUS} contigs found. Nothing to confirm."; exit 0; }
 
 cut -f1 ralstonia_kraken_contigs.tsv > ralstonia_contig_ids.txt
@@ -128,7 +133,7 @@ fi
 echo "Sequences extracted: $(grep -c '>' ralstonia_contigs.fna)"
 
 # ---- Step 5: BLASTn confirmation ----
-echo "--- Step 5: BLASTn against bacterial RefSeq ---"
+echo "--- Step 5: BLASTn against the local bacterial + Ralstonia RefSeq database ---"
 if [ -s ralstonia_blast_all_hits.tsv ]; then
   echo "BLAST output already present, skipping (delete file to rerun)."
 else
@@ -222,12 +227,12 @@ N_NC=$(awk -F'\t' 'NR>1 && $11=="not_confirmed"' ralstonia_contig_confirmation.t
 N_NH=$(awk -F'\t' 'NR>1 && $11=="no_blast_hit"' ralstonia_contig_confirmation.tsv | wc -l)
 cat > RALSTONIA_CONFIRMATION_SUMMARY.txt << SUMMARY
 === ${TARGET_GENUS} SPECIES IDENTIFICATION AND BLAST CONFIRMATION ===
-Contigs assigned to ${TARGET_GENUS} by Kraken2:   $N_TARGET
+Contigs assigned to ${TARGET_GENUS} by Kraken2 (>= ${MIN_LEN} bp):   $N_TARGET
   confirmed at species level:        $N_SP
   confirmed at genus level only:     $N_GN
   not confirmed (other genus):       $N_NC
   no BLAST hit:                      $N_NH
-Cut-offs for species confirmation:   identity >= ${MIN_PIDENT}%, query coverage >= ${MIN_QCOV}%
+Cut-offs for species confirmation:   identity >= ${MIN_PIDENT}%, query coverage >= ${MIN_QCOV}%, contig length >= ${MIN_LEN} bp
 
 Per Kraken2 species:
 $(cat ralstonia_species_confirmation.tsv)
@@ -236,6 +241,16 @@ Species according to BLAST:
 $(cat ralstonia_blast_species_counts.tsv)
 SUMMARY
 cat RALSTONIA_CONFIRMATION_SUMMARY.txt
+
+# ---- Optional: redundancy check between the two assemblies (off by default) ----
+# Set RUN_CDHIT_CHECK=1 to cluster the Ralstonia contigs (95% identity, 80% shorter-
+# sequence coverage). This only reports how many clusters there are; it does not
+# change any result above. (In this study: 269 contigs -> 264 clusters.)
+if [ "${RUN_CDHIT_CHECK:-0}" = "1" ]; then
+  command -v cd-hit-est >/dev/null || { echo "ERROR: cd-hit-est not found (conda install -c bioconda cd-hit)"; exit 1; }
+  cd-hit-est -i ralstonia_contigs.fna -o ralstonia_contigs_cdhit95.fna -c 0.95 -aS 0.8 -T "$THREADS" > cdhit.log
+  echo "Ralstonia contigs: $N_TARGET; CD-HIT-EST clusters (95% identity): $(grep -c '>' ralstonia_contigs_cdhit95.fna)"
+fi
 
 echo ""
 echo "=== Script 08 complete. Results in: $OUT_DIR ==="
